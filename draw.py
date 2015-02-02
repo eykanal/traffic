@@ -6,10 +6,10 @@ class App:
 
     def __init__(self, master):
 
-        canvas_size = (400, 150)
+        canvas_size = (400, 200)
         car_size = 10                                # height & width of car square
         lane_buffer = 2                              # space between car and white lines
-        lane_width = car_size + lane_buffer * 2        # width of each lane
+        lane_width = car_size + lane_buffer * 2      # width of each lane
         lane_count = (2, 2)                          # lanes in each direction
         road_width = lane_width * sum(lane_count) + (1 * (sum(lane_count) - 1))  # total road width, +1 to account for lines between lanes
         c_h_mid = canvas_size[0] / 2
@@ -27,11 +27,11 @@ class App:
         for i in range(1, sum(lane_count) + 1):
             v_loc = road_bottom + ((lane_width + 1) * i) - (lane_width / 2)
             if i <= lane_count[0]:
-                direction = 1
-                h_loc = car_size / 2
-            else:
                 direction = -1
                 h_loc = canvas_size[0] - (car_size / 2)
+            else:
+                direction = 1
+                h_loc = car_size / 2
 
             spawn_locs.append({
                 'loc': (h_loc, v_loc),
