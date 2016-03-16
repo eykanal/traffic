@@ -8,9 +8,10 @@ class App:
 
         # initializing variables
         self.canvas_size = (410, 200)
-        self.car_size = 10                                # height & width of car square
-        self.lane_buffer = 2                              # space between car and white lines
-        self.lane_count = (2, 2)                               # lanes in each direction
+        self.car_size = 10                              # height & width of car square
+        self.lane_buffer = 2                            # space between car and white lines
+        self.lane_count = (2, 2)                        # lanes in each direction
+        self.spawn_freq = 4.0                           # how often cars come around
 
         # calculated variables
         self.lane_width = self.car_size + self.lane_buffer * 2  # width of each lane
@@ -24,10 +25,11 @@ class App:
 
         # lanes
         lane_locs = self._find_lane_locs()
+        lane_tags = self._find_lane_tags()
 
         for i, loc_bottom in enumerate(lane_locs[:-1]):
             fill_color = "yellow" if i == self.lane_count[0] else "white smoke"
-            self.c.create_rectangle(0, loc_bottom, self.canvas_size[0], loc_bottom + self.lane_width + 1, fill="dark gray", width=0, tags="road")
+            self.c.create_rectangle(0, loc_bottom, self.canvas_size[0], loc_bottom + self.lane_width + 1, fill="dark gray", width=0, tags="road %s" % (lane_tags[i]))
             if i > 0:
                 self.c.create_line(0, loc_bottom, self.canvas_size[0], loc_bottom, fill=fill_color, dash=(8, 8), tags="road")
 
@@ -51,6 +53,11 @@ class App:
 
         self.cars = {}
 
+        self.car_colors = {
+            'normal': 'blue',
+            'grumpy': 'red',
+        }
+
         self.c.pack()
         self.c.bind("<Motion>", self.halt)
         self.c.bind("<Leave>", self.resume)
@@ -65,6 +72,23 @@ class App:
                                                                         # has a bottom border, the very top lane has a
                                                                         # top border as well
         return range(bottom, bottom + (width * count) + 1, width)
+
+    def _find_lane_tags(self):
+        lc = self.lane_count
+        t = []
+        for l in range(0, sum(lc)):
+            l1 = 1 if l < lc[0] else 2
+            l2 = l+1 if l < lc[0] else sum(lc) - l
+            t.append('%i_%i' % (l1, l2))
+        return t
+
+    def _get_lane_tags(self, car_id):
+        # logic for getting current lanes. First subtract sets, then convert to tuple (gettags needs tuple input), then
+        # remove the "road" set
+        coo = self.c.coords(car_id)
+        l = set(self.c.find_overlapping(coo[0], coo[1], coo[2], coo[3])) - set(self.c.find_withtag("car"))
+        l = self.c.gettags(tuple(l))
+        return tuple(set(l) - set(('road',)))
 
     def halt(self, e):
         self.c.after_cancel(self.after_id)
@@ -81,7 +105,14 @@ class App:
         self.animate()
 
     def show_stats(self, car_id):
-        self.c.itemconfig(self.infobox, text="speed: " + ("%1.2f" % self.cars[car_id]['speed']) + "\ndir: " + ("%1d" % self.cars[car_id]['dir']))
+        speed = self.cars[car_id]['speed']
+        dir = self.cars[car_id]['dir']
+        lane = ', '.join(self._get_lane_tags(car_id))
+        self.c.itemconfig(
+            self.infobox,
+            text="speed: " + ("%1.2f" % speed) + "\n" +
+                 "dir: " + ("%1d" % dir) + "\n" +
+                 "lane: " + ("%s" % lane))
 
     def clear_stats(self):
         self.c.itemconfig(self.infobox, text="")
@@ -97,10 +128,26 @@ class App:
                 return
 
             # slow the car down if it's approaching a slower car (remove the road objects)
-            car_in_front_id = set(self.c.find_overlapping(coo[0]+11*car['dir'], coo[1], coo[2]+11*car['dir'], coo[3])) - set(self.c.find_withtag("road"))
+            car_in_front_id = set(self.c.find_overlapping(coo[0] + (self.car_size + 1) * car['dir'],
+                                                          coo[1],
+                                                          coo[2] + (self.car_size + 1) * car['dir'],
+                                                          coo[3])
+                                  ) - set(self.c.find_withtag("road"))
             if len(car_in_front_id) > 0:
                 car['speed'] = self.cars[car_in_front_id.pop()]['speed']
-                self.c.itemconfig(i, fill="red")
+                car['state'] = 'grumpy'
+                self.c.itemconfig(i, fill=self.car_colors.get(car['state']))
+
+            # if car is slowed down, chance to change lanes... first try pass on left, then try pass on right
+            if car['state'] == 'grumpy' and (car['dir'] in (-1, 1)):
+                l = map(int, self._get_lane_tags(i)[0].split('_'))
+                if self.c.gettags('%i_%i' % (l[0], l[1] + 1)):
+                    if not(set(self.c.find_overlapping(coo[0] + self.car_size + 1 * car['dir'],
+                                                   coo[1],
+                                                   coo[2] + self.car_size + 1 * car['dir'],
+                                                   coo[3])
+                               ) - set(self.c.find_withtag("road"))):
+                        pass
 
             self.c.move(i, car['speed'] * car['dir'], 0)
 
@@ -108,11 +155,15 @@ class App:
         for l in self.spawn_locs:
             bound = l['ovl']
             if len(self.c.find_overlapping(bound[0], bound[1], bound[2], bound[3])) == 1:
-                if rand.gammavariate(1, 1) > 3.2:
-                    car_id = self.c.create_rectangle(l['loc'][0] - 5, l['loc'][1] - 5, l['loc'][0] + 5, l['loc'][1] + 5, fill="blue", activefill="yellow", tags="car")
+                if rand.gammavariate(1, 1) > self.spawn_freq:
+                    car_id = self.c.create_rectangle(l['loc'][0] - 5, l['loc'][1] - 5, l['loc'][0] + 5, l['loc'][1] + 5, fill=self.car_colors.get('normal'), activefill="yellow", tags="car")
+                    speed = rand.uniform(0.7, 1.3)
                     self.cars[car_id] = {
-                        'speed': rand.uniform(0.7, 1.3),
-                        'dir': l['dir']
+                        'speed': speed,
+                        'happy_speed': speed,
+                        'dir': l['dir'],
+                        'state': 'normal',
+                        'modified': False
                     }
 
     def animate(self):
