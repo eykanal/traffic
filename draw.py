@@ -1,6 +1,7 @@
+# -*- coding: utf-8 -*-
 from Tkinter import *
 import random as rand
-
+import math
 
 class App:
 
@@ -106,12 +107,12 @@ class App:
 
     def show_stats(self, car_id):
         speed = self.cars[car_id]['speed']
-        dir = self.cars[car_id]['dir']
+        dir = math.degrees(math.acos(self.cars[car_id]['dir']))
         lane = ', '.join(self._get_lane_tags(car_id))
         self.c.itemconfig(
             self.infobox,
             text="speed: " + ("%1.2f" % speed) + "\n" +
-                 "dir: " + ("%1d" % dir) + "\n" +
+                 "dir: " + ("%1d" % dir) + "°" + "\n" +
                  "lane: " + ("%s" % lane))
 
     def clear_stats(self):
@@ -135,21 +136,37 @@ class App:
                                   ) - set(self.c.find_withtag("road"))
             if len(car_in_front_id) > 0:
                 car['speed'] = self.cars[car_in_front_id.pop()]['speed']
-                car['state'] = 'grumpy'
-                self.c.itemconfig(i, fill=self.car_colors.get(car['state']))
+                self.c.itemconfig(i, fill=self.car_colors['grumpy'])
 
             # if car is slowed down, chance to change lanes... first try pass on left, then try pass on right
-            if car['state'] == 'grumpy' and (car['dir'] in (-1, 1)):
+            if car['speed'] != car['happy_speed'] and (car['mdir'] in (0, math.pi)):
                 l = map(int, self._get_lane_tags(i)[0].split('_'))
-                if self.c.gettags('%i_%i' % (l[0], l[1] + 1)):
-                    if not(set(self.c.find_overlapping(coo[0] + self.car_size + 1 * car['dir'],
-                                                   coo[1],
-                                                   coo[2] + self.car_size + 1 * car['dir'],
-                                                   coo[3])
+                # does lane exist?
+                next_lane = '%i_%i' % (l[0], l[1] + 1)
+                if self.c.gettags(next_lane):
+                    # bounding box for lane changes not being drawn correctly. Steps I should code in:
+                    #  1. find the direction car moving (i.e., front of car)
+                    #  2. find the lane I'm moving to (left or right)
+                    #  3. draw the box based on those (from front of car + buffer to 3x car behind)
+                    # is a car there now?
+                    if not(set(self.c.find_overlapping(coo[0] + (self.car_size * 2) * -1 * car['dir'],
+                                                       coo[1] + self.lane_width,
+                                                       coo[2] + (self.car_size * 2) * -1 * car['dir'],
+                                                       coo[3] + self.lane_width)
                                ) - set(self.c.find_withtag("road"))):
-                        pass
+                        car['moving_to_lane'] = next_lane
+                        car['mdir'] = car['mdir'] - math.pi/6
 
-            self.c.move(i, car['speed'] * car['dir'], 0)
+            # if finished changing lanes, reset direction
+            if car['speed'] != car['happy_speed']\
+                    and car['mdir'] not in (0, math.pi)\
+                    and (self._get_lane_tags(i) == (car['moving_to_lane'],)):
+                car['mdir'] = math.acos(car['dir'])
+                car['moving_to_lane'] = ''
+                car['speed'] = car['happy_speed']
+                self.car_colors.get('normal')
+
+            self.c.move(i, round(car['speed'] * math.cos(car['mdir']), 4), round(car['speed'] * math.sin(car['mdir']), 4))
 
     def spawn(self):
         for l in self.spawn_locs:
@@ -162,8 +179,9 @@ class App:
                         'speed': speed,
                         'happy_speed': speed,
                         'dir': l['dir'],
-                        'state': 'normal',
-                        'modified': False
+                        'mdir': math.acos(l['dir']),
+                        'modified': False,
+                        'moving_to_lane': '',
                     }
 
     def animate(self):
