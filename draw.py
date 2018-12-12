@@ -3,16 +3,22 @@ from Tkinter import *
 import random as rand
 import math
 
+
 class App:
 
     def __init__(self, master):
 
         # initializing variables
-        self.canvas_size = (410, 200)
+        self.canvas_size = (810, 200)
         self.car_size = 10                              # height & width of car square
         self.lane_buffer = 2                            # space between car and white lines
         self.lane_count = (2, 2)                        # lanes in each direction
         self.spawn_freq = 4.0                           # how often cars come around
+        self.car_colors = {
+            'normal': 'blue',
+            'grumpy': 'red',
+        }
+        self.cars = {}
 
         # calculated variables
         self.lane_width = self.car_size + self.lane_buffer * 2  # width of each lane
@@ -52,21 +58,14 @@ class App:
                     v_loc + self.car_size / 2
                 )})
 
-        self.cars = {}
-
-        self.car_colors = {
-            'normal': 'blue',
-            'grumpy': 'red',
-        }
-
-        self.c.pack()
+        self.c.pack()                                   # resize window to fit our widgets
         self.c.bind("<Motion>", self.halt)
         self.c.bind("<Leave>", self.resume)
-
         self.infobox = self.c.create_text(5, 5, anchor="nw")
         self.animate()
 
     def _find_lane_locs(self):
+        # helper function to identify lane coordinates on the canvas. Specifically, find the lower bound of each lane
         width = self.car_size + (self.lane_buffer * 2) + 1
         count = sum(self.lane_count)
         bottom = (self.canvas_size[1] / 2) - ((width * count) + 1) / 2  # extra +1 is for the top border... each lane
@@ -75,6 +74,7 @@ class App:
         return range(bottom, bottom + (width * count) + 1, width)
 
     def _find_lane_tags(self):
+        # helper function to create the tags to be assigned to each lane
         lc = self.lane_count
         t = []
         for l in range(0, sum(lc)):
@@ -111,9 +111,11 @@ class App:
         lane = ', '.join(self._get_lane_tags(car_id))
         self.c.itemconfig(
             self.infobox,
-            text="speed: " + ("%1.2f" % speed) + "\n" +
+            text="id: " + ("%d" % car_id) + "\n" +
+                 "speed: " + ("%1.2f" % speed) + "\n" +
                  "dir: " + ("%1d" % dir) + "°" + "\n" +
                  "lane: " + ("%s" % lane))
+
 
     def clear_stats(self):
         self.c.itemconfig(self.infobox, text="")
@@ -149,11 +151,14 @@ class App:
                     #  2. find the lane I'm moving to (left or right)
                     #  3. draw the box based on those (from front of car + buffer to 3x car behind)
                     # is a car there now?
-                    if not(set(self.c.find_overlapping(coo[0] + (self.car_size * 2) * -1 * car['dir'],
-                                                       coo[1] + self.lane_width,
-                                                       coo[2] + (self.car_size * 2) * -1 * car['dir'],
-                                                       coo[3] + self.lane_width)
-                               ) - set(self.c.find_withtag("road"))):
+                    # box in car back = 2x car width + buffer, front of car = car buffer (1x car length)
+                    coo_new = []
+                    coo_new.append(coo[0] - self.car_size if car['dir'] == -1 else coo[0] - self.car_size * 1.5)
+                    coo_new.append(coo[1] + self.lane_width * (-1 if car['dir'] == 1 else 1))
+                    coo_new.append(coo[2] + self.car_size if car['dir'] == 1 else coo[2] + self.car_size * 1.5)
+                    coo_new.append(coo[3] + self.lane_width * (-1 if car['dir'] == 1 else 1))
+                    cars_in_the_way = set(self.c.find_overlapping(coo_new[0], coo_new[1], coo_new[2], coo_new[3])) - set(self.c.find_withtag("road"))
+                    if not(cars_in_the_way):
                         car['moving_to_lane'] = next_lane
                         car['mdir'] = car['mdir'] - math.pi/6
 
@@ -164,13 +169,15 @@ class App:
                 car['mdir'] = math.acos(car['dir'])
                 car['moving_to_lane'] = ''
                 car['speed'] = car['happy_speed']
-                self.car_colors.get('normal')
+                self.c.itemconfig(i, fill=self.car_colors['normal'])
 
             self.c.move(i, round(car['speed'] * math.cos(car['mdir']), 4), round(car['speed'] * math.sin(car['mdir']), 4))
 
     def spawn(self):
+        # function to create new cars
         for l in self.spawn_locs:
             bound = l['ovl']
+            # only create a new car if I didn't just create one (i.e., if a car isn't already in the spawn location)
             if len(self.c.find_overlapping(bound[0], bound[1], bound[2], bound[3])) == 1:
                 if rand.gammavariate(1, 1) > self.spawn_freq:
                     car_id = self.c.create_rectangle(l['loc'][0] - 5, l['loc'][1] - 5, l['loc'][0] + 5, l['loc'][1] + 5, fill=self.car_colors.get('normal'), activefill="yellow", tags="car")
