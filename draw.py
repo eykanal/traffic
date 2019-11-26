@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
-from Tkinter import *
+
+from builtins import map, range, object
+from tkinter import *
 import random as rand
 import math
 
 
-class App:
+class App(object):
 
     def __init__(self, master):
 
@@ -23,8 +25,8 @@ class App:
         # calculated variables
         self.lane_width = self.car_size + self.lane_buffer * 2  # width of each lane
         self.road_width = self.lane_width * sum(self.lane_count) + (1 * (sum(self.lane_count) - 1))  # total road width, +1 to account for lines between lanes
-        self.c_v_mid = self.canvas_size[1] / 2
-        self.road_bottom = self.c_v_mid - ((self.road_width / 2) + 1)  # +1 for lines between lanes
+        self.c_v_mid = self.canvas_size[1] // 2
+        self.road_bottom = self.c_v_mid - ((self.road_width // 2) + 1)  # +1 for lines between lanes
         self.spawn_locs = []
 
         self.master = master
@@ -40,22 +42,22 @@ class App:
             if i > 0:
                 self.c.create_line(0, loc_bottom, self.canvas_size[0], loc_bottom, fill=fill_color, dash=(8, 8), tags="road")
 
-            v_loc = loc_bottom + 1 + (self.lane_width / 2)
+            v_loc = loc_bottom + 1 + (self.lane_width // 2)
             if i < self.lane_count[0]:
                 direction = -1
-                h_loc = self.canvas_size[0] - (self.car_size / 2)
+                h_loc = self.canvas_size[0] - (self.car_size // 2)
             else:
                 direction = 1
-                h_loc = self.car_size / 2
+                h_loc = self.car_size // 2
 
             self.spawn_locs.append({
                 'loc': (h_loc, v_loc),
                 'dir': direction,
                 'ovl': (
-                    h_loc - ((self.car_size / 2) * direction),
-                    v_loc - self.car_size / 2,
-                    h_loc + (((self.car_size / 2) + self.car_size) * direction),
-                    v_loc + self.car_size / 2
+                    h_loc - ((self.car_size // 2) * direction),
+                    v_loc - self.car_size // 2,
+                    h_loc + (((self.car_size // 2) + self.car_size) * direction),
+                    v_loc + self.car_size // 2
                 )})
 
         self.c.pack()                                   # resize window to fit our widgets
@@ -68,10 +70,10 @@ class App:
         # helper function to identify lane coordinates on the canvas. Specifically, find the lower bound of each lane
         width = self.car_size + (self.lane_buffer * 2) + 1
         count = sum(self.lane_count)
-        bottom = (self.canvas_size[1] / 2) - ((width * count) + 1) / 2  # extra +1 is for the top border... each lane
+        bottom = (self.canvas_size[1] // 2) - ((width * count) + 1) // 2  # extra +1 is for the top border... each lane
                                                                         # has a bottom border, the very top lane has a
                                                                         # top border as well
-        return range(bottom, bottom + (width * count) + 1, width)
+        return list(range(bottom, bottom + (width * count) + 1, width))
 
     def _find_lane_tags(self):
         # helper function to create the tags to be assigned to each lane
@@ -89,7 +91,7 @@ class App:
         coo = self.c.coords(car_id)
         l = set(self.c.find_overlapping(coo[0], coo[1], coo[2], coo[3])) - set(self.c.find_withtag("car"))
         l = self.c.gettags(tuple(l))
-        return tuple(set(l) - set(('road',)))
+        return tuple(set(l) - {'road', })
 
     def halt(self, e):
         self.c.after_cancel(self.after_id)
@@ -116,12 +118,11 @@ class App:
                  "dir: " + ("%1d" % dir) + "°" + "\n" +
                  "lane: " + ("%s" % lane))
 
-
     def clear_stats(self):
         self.c.itemconfig(self.infobox, text="")
 
     def move(self):
-        for i, car in self.cars.iteritems():
+        for i, car in list(self.cars.items()):
             coo = self.c.coords(i)
 
             # delete the car if moves out of canvas
@@ -142,7 +143,7 @@ class App:
 
             # if car is slowed down, chance to change lanes... first try pass on left, then try pass on right
             if car['speed'] != car['happy_speed'] and (car['mdir'] in (0, math.pi)):
-                l = map(int, self._get_lane_tags(i)[0].split('_'))
+                l = list(map(int, self._get_lane_tags(i)[0].split('_')))
                 # does lane exist?
                 next_lane = '%i_%i' % (l[0], l[1] + 1)
                 if self.c.gettags(next_lane):
@@ -160,7 +161,7 @@ class App:
                     cars_in_the_way = set(self.c.find_overlapping(coo_new[0], coo_new[1], coo_new[2], coo_new[3])) - set(self.c.find_withtag("road"))
                     if not(cars_in_the_way):
                         car['moving_to_lane'] = next_lane
-                        car['mdir'] = car['mdir'] - math.pi/6
+                        car['mdir'] = car['mdir'] - math.pi//6
 
             # if finished changing lanes, reset direction
             if car['speed'] != car['happy_speed']\
